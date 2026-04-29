@@ -74,6 +74,11 @@ class AgentRunOut(BaseModel):
     num_steps: int
     latency_s: float
     total_tokens: int
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # Plan-Execute specific — empty for ReAct
+    plan: list[str] = []
+    step_results: list[str] = []
 
 
 # ── Experiment ───────────────────────────────────────────────────────────────
