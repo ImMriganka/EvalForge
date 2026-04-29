@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,39 +9,29 @@ from app.schemas import EvalRequest, EvalOut
 from app.services.ragas_service import run_rag_eval
 from app.services.eval_service import compute_trustworthiness, grade, build_results_payload
 from app.services.langsmith_service import ensure_dataset, log_experiment
+from app.services.injection_service import run_injection_suite
 import app.models as models
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
 
 @router.post("/run", response_model=EvalOut, summary="Run a full evaluation")
 def run_evaluation(req: EvalRequest, db: Session = Depends(get_db)):
     """
-    Full RAG evaluation pipeline:
+    Full evaluation pipeline:
 
-    1. Run RAGAS metrics (Faithfulness, AnswerRelevancy, ContextPrecision,
-       ContextRecall, FactualCorrectness, NoiseSensitivity)
-    2. Compute trustworthiness composite score + letter grade
-    3. Optionally upload dataset + log scores to LangSmith
-    4. Persist Experiment record to DB
-    5. Return experiment_id + full results payload
+    1. RAGAS metrics  — Faithfulness, AnswerRelevancy, ContextPrecision,
+                        ContextRecall, FactualCorrectness, NoiseSensitivity
+    2. Injection test — 6-category prompt injection attack suite
+                        (only when run_injection=true)
+    3. Trustworthiness composite score + letter grade
+    4. LangSmith tracking (optional)
+    5. Persist + return results
 
-    Sample payload:
-    {
-      "experiment_name": "my-rag-v1",
-      "model_name": "gpt-4o-mini",
-      "agent_type": "rag",
-      "samples": [
-        {
-          "question": "What is the capital of France?",
-          "contexts": ["Paris is the capital of France."],
-          "answer": "The capital of France is Paris.",
-          "ground_truth": "Paris"
-        }
-      ],
-      "run_injection": false
-    }
+    Set `run_injection: false` to skip the injection suite (much faster).
     """
     # ── 1. RAGAS evaluation ──────────────────────────────────────────────────
     try:
@@ -51,13 +42,39 @@ def run_evaluation(req: EvalRequest, db: Session = Depends(get_db)):
         logger.error("RAGAS evaluation failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"RAGAS evaluation error: {exc}")
 
-    # ── 2. Trustworthiness composite ────────────────────────────────────────
-    # Injection summary is empty at this phase — Phase 4 will populate it.
-    injection_summary = {"injection_rate": 0.0, "robustness": 1.0, "status": "not_run"}
+    # ── 2. Injection test (optional) ────────────────────────────────────────
+    if req.run_injection:
+        from langchain_ollama import ChatOllama
+
+        def _injection_target(prompt: str) -> str:
+            return ChatOllama(
+                model=req.model_name,
+                base_url=OLLAMA_BASE_URL,
+                temperature=0,
+            ).invoke(prompt).content
+
+        try:
+            injection_full    = run_injection_suite(_injection_target)
+            injection_summary = injection_full["summary"]
+        except Exception as exc:
+            logger.warning("Injection suite failed, using default: %s", exc)
+            injection_summary = {
+                "injection_rate": 0.0,
+                "robustness":     1.0,
+                "status":         f"error: {exc}",
+            }
+    else:
+        injection_summary = {
+            "injection_rate": 0.0,
+            "robustness":     1.0,
+            "status":         "skipped",
+        }
+
+    # ── 3. Trustworthiness composite ────────────────────────────────────────
     trust_score = compute_trustworthiness(ragas_scores, injection_summary)
     trust_grade = grade(trust_score)
 
-    # ── 3. LangSmith tracking (optional — degrades gracefully if key absent) ─
+    # ── 4. LangSmith tracking (optional) ────────────────────────────────────
     ls_dataset_name = ensure_dataset(
         name=f"evalforge-{req.experiment_name}",
         samples=req.samples,
@@ -70,7 +87,7 @@ def run_evaluation(req: EvalRequest, db: Session = Depends(get_db)):
         metadata={"model": req.model_name, "agent_type": req.agent_type},
     )
 
-    # ── 4. Build + persist results ───────────────────────────────────────────
+    # ── 5. Build + persist results ───────────────────────────────────────────
     results = build_results_payload(ragas_scores, injection_summary, trust_score, trust_grade)
     if ls_result:
         results["langsmith"] = ls_result
