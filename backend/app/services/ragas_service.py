@@ -1,5 +1,8 @@
 """
-RAGAS 0.2.x evaluation service.
+RAGAS 0.2.x evaluation service — backed by Ollama (local LLM, no API key needed).
+
+Default model : llama3.1:8b  (override via OLLAMA_MODEL env var)
+Ollama base URL: http://localhost:11434  (override via OLLAMA_BASE_URL env var)
 
 Field mapping from EvalRequest.samples dicts → SingleTurnSample:
   question       → user_input
@@ -22,7 +25,10 @@ from ragas.metrics import (
 )
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_ollama import ChatOllama, OllamaEmbeddings
+
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL",    "llama3.1:8b")
 
 
 def build_ragas_dataset(samples: list) -> EvaluationDataset:
@@ -60,11 +66,13 @@ def build_ragas_dataset(samples: list) -> EvaluationDataset:
 
 
 def run_rag_eval(
-    samples: list[dict[str, Any]],
-    model_name: str = "gpt-4o-mini",
+    samples: list,
+    model_name: str | None = None,
 ) -> dict[str, float | None]:
     """
-    Run RAGAS evaluation over the provided samples.
+    Run RAGAS evaluation over the provided samples using a local Ollama model.
+
+    model_name — Ollama model to use (defaults to OLLAMA_MODEL env var → llama3.1:8b).
 
     Returns a dict of mean metric scores:
       {
@@ -77,14 +85,14 @@ def run_rag_eval(
       }
     Any metric that cannot be computed (e.g. missing fields) is returned as None.
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "OPENAI_API_KEY is not set. Cannot run RAGAS evaluation."
-        )
+    model = model_name or OLLAMA_MODEL
 
-    llm = LangchainLLMWrapper(ChatOpenAI(model=model_name, temperature=0))
-    embeddings = LangchainEmbeddingsWrapper(OpenAIEmbeddings())
+    llm = LangchainLLMWrapper(
+        ChatOllama(model=model, base_url=OLLAMA_BASE_URL, temperature=0)
+    )
+    embeddings = LangchainEmbeddingsWrapper(
+        OllamaEmbeddings(model=model, base_url=OLLAMA_BASE_URL)
+    )
 
     metrics = [
         Faithfulness(llm=llm),

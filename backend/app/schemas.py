@@ -46,7 +46,7 @@ class EvalSample(BaseModel):
 
 class EvalRequest(BaseModel):
     experiment_name: str
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "llama3.1:8b"
     agent_type: str = Field(
         "rag",
         description="One of: rag | react | plan_execute",
@@ -64,7 +64,7 @@ class EvalOut(BaseModel):
 
 class AgentRunRequest(BaseModel):
     question: str
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "llama3.1:8b"
     agent_type: str = Field("react", description="react | plan_execute")
 
 
@@ -92,7 +92,7 @@ class ExperimentOut(BaseModel):
 # ── Injection ────────────────────────────────────────────────────────────────
 
 class InjectionRunRequest(BaseModel):
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "llama3.1:8b"
     experiment_id: int | None = None
 
 

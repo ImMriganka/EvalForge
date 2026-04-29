@@ -30,7 +30,7 @@ client = TestClient(app)
 
 SAMPLE_PAYLOAD = {
     "experiment_name": "test-run",
-    "model_name": "gpt-4o-mini",
+    "model_name": "llama3.1:8b",
     "agent_type": "rag",
     "run_injection": False,
     "samples": [
@@ -183,7 +183,7 @@ class TestEvalsRunEndpoint:
     def test_run_eval_missing_api_key_returns_422(self):
         with patch(
             "app.routers.evals.run_rag_eval",
-            side_effect=EnvironmentError("OPENAI_API_KEY is not set"),
+            side_effect=EnvironmentError("Ollama is not reachable at http://localhost:11434"),
         ):
             response = client.post("/api/v1/evals/run", json=SAMPLE_PAYLOAD)
 
@@ -203,4 +203,4 @@ class TestEvalsRunEndpoint:
         get_response = client.get(f"/api/v1/experiments/{exp_id}")
         assert get_response.status_code == 200
         assert get_response.json()["name"] == "test-run"
-        assert get_response.json()["model_name"] == "gpt-4o-mini"
+        assert get_response.json()["model_name"] == "llama3.1:8b"
