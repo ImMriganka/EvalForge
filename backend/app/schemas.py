@@ -26,6 +26,24 @@ class DatasetOut(BaseModel):
 
 # ── Eval ─────────────────────────────────────────────────────────────────────
 
+class EvalSample(BaseModel):
+    """
+    One evaluation sample. Both naming conventions are accepted:
+      question / user_input       — the question posed to the LLM
+      contexts / retrieved_contexts — list of retrieved document chunks
+      answer   / response         — the LLM's answer
+      ground_truth / reference    — the correct answer for comparison
+    """
+    question:           str | None = None
+    user_input:         str | None = None
+    contexts:           list[str] = Field(default_factory=list)
+    retrieved_contexts: list[str] = Field(default_factory=list)
+    answer:             str | None = None
+    response:           str | None = None
+    ground_truth:       str | None = None
+    reference:          str | None = None
+
+
 class EvalRequest(BaseModel):
     experiment_name: str
     model_name: str = "gpt-4o-mini"
@@ -33,7 +51,7 @@ class EvalRequest(BaseModel):
         "rag",
         description="One of: rag | react | plan_execute",
     )
-    samples: list[dict[str, Any]]
+    samples: list[EvalSample]
     run_injection: bool = True
 
 
