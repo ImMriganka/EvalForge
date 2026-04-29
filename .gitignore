@@ -29,3 +29,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# CI artifacts
+pytest-report.json
+test_ci.db

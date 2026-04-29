@@ -1,0 +1,21 @@
+# Railway deployment configuration for EvalForge backend
+# https://docs.railway.app/reference/config-as-code
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+# Railway injects $PORT — must use it instead of a hardcoded port
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+
+# Environment variables to set in the Railway dashboard:
+#
+#   DATABASE_URL        = postgresql://... (Railway Postgres add-on)
+#   OLLAMA_BASE_URL     = http://<your-ollama-host>:11434
+#   OLLAMA_MODEL        = llama3.1:8b
+#   ALLOWED_ORIGINS     = https://your-app.vercel.app
+#   LANGCHAIN_API_KEY   = ls__... (optional)
