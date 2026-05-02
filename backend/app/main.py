@@ -2,6 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.database import engine, Base
 from app.routers import evals, agents, datasets, experiments, injection
@@ -28,6 +29,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Expose /metrics endpoint for Prometheus scraping
+Instrumentator().instrument(app).expose(app)
 
 app.include_router(evals.router,        prefix="/api/v1/evals",       tags=["Evals"])
 app.include_router(agents.router,       prefix="/api/v1/agents",      tags=["Agents"])
