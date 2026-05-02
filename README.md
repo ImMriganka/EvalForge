@@ -22,6 +22,7 @@ It runs entirely locally with [Ollama](https://ollama.com) — no OpenAI key req
 | **REST API** | FastAPI backend with auto-generated Swagger docs at `/docs` |
 | **Dashboard UI** | Next.js frontend with live KPI cards, RAGAS bar chart, and injection breakdown |
 | **CI Pipeline** | GitHub Actions: pytest (69 tests) + Next.js build + regression gate |
+| **Observability** | Prometheus metrics + Grafana dashboard — request rate, latency (P50/P95/P99), error rate, uptime |
 
 ---
 
@@ -42,6 +43,7 @@ It runs entirely locally with [Ollama](https://ollama.com) — no OpenAI key req
 │  /api/v1/agents       ReAct / Plan-Execute agent runner  │
 │  /api/v1/experiments  CRUD — persist & retrieve results  │
 │  /api/v1/datasets     Upload evaluation datasets         │
+│  /metrics             Prometheus scrape endpoint         │
 └──────┬──────────────────────┬───────────────────────────┘
        │                      │
 ┌──────▼──────┐     ┌─────────▼──────────┐
@@ -49,6 +51,15 @@ It runs entirely locally with [Ollama](https://ollama.com) — no OpenAI key req
 │  Postgres   │     │   llama3.1:8b      │
 │  (results)  │     │   (LLM + embeddings│
 └─────────────┘     └────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                  Observability Stack                      │
+│                                                          │
+│  Prometheus (port 9090) — scrapes /metrics every 15s    │
+│  Grafana    (port 3001) — pre-built API dashboard        │
+│    • Request rate · P50/P95/P99 latency                  │
+│    • Error rate · HTTP status codes · In-flight requests │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -87,14 +98,19 @@ npm run dev
 # Dashboard: http://localhost:3000
 ```
 
-### 3. Docker Compose (full stack)
+### 3. Docker Compose (full stack + monitoring)
 
 ```bash
 cp .env.example backend/.env
 docker compose up --build
-# Frontend: http://localhost:3000
-# Backend:  http://localhost:8000/docs
+# Frontend:    http://localhost:3000
+# Backend API: http://localhost:8000/docs
+# Metrics:     http://localhost:8000/metrics
+# Prometheus:  http://localhost:9090
+# Grafana:     http://localhost:3001  (admin / evalforge)
 ```
+
+Grafana comes pre-configured with a Prometheus datasource and an EvalForge dashboard showing request rate, latency percentiles, error rate, and uptime — no manual setup needed.
 
 ---
 
@@ -219,6 +235,14 @@ evalforge/
 │   │   └── lib/                  # api.ts (Axios), queryClient.ts
 │   ├── Dockerfile
 │   └── next.config.ts
+├── monitoring/
+│   ├── prometheus.yml                # Scrape config — targets backend:8000/metrics
+│   └── grafana/
+│       ├── provisioning/
+│       │   ├── datasources/          # Auto-wires Prometheus datasource
+│       │   └── dashboards/           # Auto-loads dashboards on startup
+│       └── dashboards/
+│           └── evalforge.json        # Pre-built API observability dashboard
 ├── scripts/
 │   └── check_regression.py       # CI regression gate
 ├── .github/
@@ -229,6 +253,31 @@ evalforge/
 ├── vercel.json                   # Frontend deploy config (Vercel)
 └── .env.example
 ```
+
+---
+
+## Observability
+
+EvalForge exposes a `/metrics` endpoint (via `prometheus-fastapi-instrumentator`) that Prometheus scrapes every 15 seconds. Grafana auto-provisions a dashboard on startup — no manual configuration needed.
+
+| Service | URL | Credentials |
+|---|---|---|
+| Grafana | http://localhost:3001 | admin / evalforge |
+| Prometheus | http://localhost:9090 | — |
+| Metrics endpoint | http://localhost:8000/metrics | — |
+
+**Dashboard panels:**
+
+| Panel | What it shows |
+|---|---|
+| Total Requests | Cumulative request count (1h window) |
+| Error Rate | % of 5xx responses (threshold: yellow >1%, red >5%) |
+| P95 Latency | 95th percentile response time |
+| Uptime | Live UP/DOWN status |
+| Request Rate | Per-handler req/s over time |
+| Latency Percentiles | P50 / P95 / P99 time series |
+| HTTP Status Codes | 2xx / 4xx / 5xx breakdown over time |
+| In-Flight Requests | Concurrent requests being processed |
 
 ---
 
@@ -282,4 +331,6 @@ push / PR
 | Frontend | Next.js 16 + React Query + Recharts + Tailwind CSS |
 | CI | GitHub Actions |
 | Containers | Docker + Docker Compose |
+| Metrics | Prometheus + prometheus-fastapi-instrumentator |
+| Dashboards | Grafana (pre-provisioned, zero-config) |
 | Deployment | Railway (backend) + Vercel (frontend) |
